@@ -161,11 +161,14 @@ loss_fn = torch.nn.CrossEntropyLoss()
 # Define the optimizer
 optimizer = Adam(model.parameters(), lr=1e-4)
 
+# Define the learning rate scheduler
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3)
+
 
 # Training loop
 def train(model, train_dataloader, val_dataloader, loss_fn, optimizer, device):
     model.train()  # Set the model to training mode
-    running_loss = 0
+    total_train_loss = 0
 
     for images, masks in train_dataloader:
         images = images.to(device)
@@ -183,11 +186,11 @@ def train(model, train_dataloader, val_dataloader, loss_fn, optimizer, device):
         loss.backward()
         optimizer.step()
 
-        running_loss += loss.item()
+        total_train_loss += loss.item()
 
         # Validation phase
     model.eval()  # Set model to evaluation mode
-    val_loss = 0.0
+    total_val_loss = 0.0
     correct = 0
     total = 0
     with torch.no_grad():  # No need to track gradients
@@ -196,19 +199,24 @@ def train(model, train_dataloader, val_dataloader, loss_fn, optimizer, device):
             masks = masks.to(device)
             outputs = model(images)
             loss = loss_fn(images, masks.long())
-            val_loss += loss.item()
+            total_val_loss += loss.item()
 
             # Accuracy
             _, predicted = torch.max(outputs, 1)
             total += masks.numel()
             correct += (predicted == masks).sum().item()
 
+        val_loss = total_val_loss / len(val_dataloader)
+        scheduler.step(val_loss)
+    # train loss
+    train_loss = total_train_loss / len(train_dataloader)
+
     # Print statistics for the epoch
-    print(f'Epoch {epoch+1}, Loss: {running_loss/len(train_dataloader)}, '
-          f'Validation Loss: {val_loss/len(val_dataloader)}, '
+    print(f'Epoch {epoch+1}, Loss: {train_loss}, '
+          f'Validation Loss: {val_loss}, '
           f'Validation Accuracy: {correct/total}')
 
-    return running_loss / len(train_dataloader)
+    return train_loss
 
 
 # Example training loop
